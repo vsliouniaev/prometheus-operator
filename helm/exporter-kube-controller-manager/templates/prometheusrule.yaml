@@ -5,18 +5,18 @@ metadata:
     app: "prometheus"
     chart: {{ .Chart.Name }}-{{ .Chart.Version }}
     heritage: {{ .Release.Service }}
-    prometheus: {{ .Values.prometheusLabelValue | default .Release.Name | quote }}
+    prometheus: {{ .Release.Name }}
     release: {{ .Release.Name }}
     {{- if .Values.additionalRulesLabels }}
 {{ toYaml .Values.additionalRulesLabels | indent 4 }}
     {{- else if .Values.additionalRulesConfigMapLabels }}       # Deprecated for .Values.additionalRulesLabels
 {{ toYaml .Values.additionalRulesConfigMapLabels | indent 4 }}  # Deprecated for .Values.additionalRulesLabels
     {{- end }}
-  name: {{ template "prometheus.fullname" . }}-rules
+  name: {{ template "exporter-kube-controller-manager.fullname" . }}
 spec:
 {{- if .Values.prometheusRules }}
   groups:
 {{ toYaml .Values.prometheusRules | indent 4 }}
 {{ else }}
-{{ include "prometheus.rules.yaml.tpl" . | indent 2}}
+{{ include "kube-controller-manager.rules.yaml.tpl" . | indent 2}}
 {{ end }}
