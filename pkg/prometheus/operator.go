@@ -33,7 +33,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	appsv1 "k8s.io/api/apps/v1beta2"
-	v1 "k8s.io/api/core/v1"
+	"k8s.io/api/core/v1"
 	extensionsobj "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1beta1"
 	apiextensionsclient "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -136,6 +136,7 @@ type Config struct {
 	KubeletObject                 string
 	TLSInsecure                   bool
 	TLSConfig                     rest.TLSClientConfig
+	HostTLSConfig                 rest.TLSClientConfig
 	ConfigReloaderImage           string
 	ConfigReloaderCPU             string
 	ConfigReloaderMemory          string

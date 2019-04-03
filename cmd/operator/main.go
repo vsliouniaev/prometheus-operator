@@ -19,6 +19,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"github.com/coreos/prometheus-operator/pkg/admission"
 	"net"
 	"net/http"
 	"net/http/pprof"
@@ -29,7 +30,7 @@ import (
 
 	alertmanagercontroller "github.com/coreos/prometheus-operator/pkg/alertmanager"
 	"github.com/coreos/prometheus-operator/pkg/api"
-	monitoring "github.com/coreos/prometheus-operator/pkg/apis/monitoring"
+	"github.com/coreos/prometheus-operator/pkg/apis/monitoring"
 	monitoringv1 "github.com/coreos/prometheus-operator/pkg/apis/monitoring/v1"
 	prometheuscontroller "github.com/coreos/prometheus-operator/pkg/prometheus"
 	"github.com/coreos/prometheus-operator/pkg/version"
@@ -39,7 +40,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"golang.org/x/sync/errgroup"
-	v1 "k8s.io/api/core/v1"
+	"k8s.io/api/core/v1"
 	"k8s.io/klog"
 )
 
@@ -91,6 +92,23 @@ func (n namespaces) asSlice() []string {
 	return ns
 }
 
+func serve(srv *http.Server, listener net.Listener, logger log.Logger) func() error {
+	return func() error {
+		var err error
+		if cfg.HostTLSConfig.CertFile != "" && cfg.HostTLSConfig.KeyFile != "" {
+			logger.Log("msg", "Staring secure server on :8080")
+			err = srv.ServeTLS(listener, cfg.HostTLSConfig.CertFile, cfg.HostTLSConfig.KeyFile)
+		} else {
+			logger.Log("msg", "Staring insecure server on :8080")
+			err = srv.Serve(listener)
+		}
+		if err != http.ErrServerClosed {
+			return err
+		}
+		return nil
+	}
+}
+
 var (
 	cfg                prometheuscontroller.Config
 	availableLogLevels = []string{
@@ -115,6 +133,8 @@ func init() {
 	flagset.StringVar(&cfg.TLSConfig.CertFile, "cert-file", "", " - NOT RECOMMENDED FOR PRODUCTION - Path to public TLS certificate file.")
 	flagset.StringVar(&cfg.TLSConfig.KeyFile, "key-file", "", "- NOT RECOMMENDED FOR PRODUCTION - Path to private TLS certificate file.")
 	flagset.StringVar(&cfg.TLSConfig.CAFile, "ca-file", "", "- NOT RECOMMENDED FOR PRODUCTION - Path to TLS CA file.")
+	flagset.StringVar(&cfg.HostTLSConfig.CertFile, "host-cert-file", "", "Path to certificate file to host web endpoint")
+	flagset.StringVar(&cfg.HostTLSConfig.KeyFile, "host-key-file", "", "Path to key file to host web endpoint")
 	flagset.StringVar(&cfg.KubeletObject, "kubelet-service", "", "Service/Endpoints object to write kubelets into in format \"namespace/name\"")
 	flagset.BoolVar(&cfg.TLSInsecure, "tls-insecure", false, "- NOT RECOMMENDED FOR PRODUCTION - Don't verify API server's CA certificate.")
 	// The Prometheus config reloader image is released along with the
@@ -186,8 +206,10 @@ func Main() int {
 		fmt.Fprint(os.Stderr, "instantiating api failed: ", err)
 		return 1
 	}
+	admit := admission.New(log.With(logger, "component", "admissionwebhook"))
 
 	web.Register(mux)
+	admit.Register(mux)
 	l, err := net.Listen("tcp", ":8080")
 	if err != nil {
 		fmt.Fprint(os.Stderr, "listening port 8080 failed", err)
@@ -205,12 +227,29 @@ func Main() int {
 			" triggered the Prometheus Operator to reconcile an object",
 	}, []string{"controller", "triggered_by", "action"})
 
+	validationTriggeredCounter := prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "prometheus_operator_rule_validation_triggered_total",
+		Help: "Number of times a prometheusRule object triggered validation",
+	})
+
+	validationErrorsCounter := prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "prometheus_operator_rule_validation_errors_total",
+		Help: "Number of errors that occurred while validating a prometheusRules object",
+	})
+
 	r := prometheus.NewRegistry()
 	r.MustRegister(
 		prometheus.NewGoCollector(),
 		prometheus.NewProcessCollector(prometheus.ProcessCollectorOpts{}),
 		reconcileErrorsCounter,
 		triggerByCounter,
+		validationTriggeredCounter,
+		validationErrorsCounter,
+	)
+
+	admit.RegisterMetrics(
+		&validationTriggeredCounter,
+		&validationErrorsCounter,
 	)
 
 	prometheusLabels := prometheus.Labels{"controller": "prometheus"}
@@ -241,7 +280,7 @@ func Main() int {
 	wg.Go(func() error { return ao.Run(ctx.Done()) })
 
 	srv := &http.Server{Handler: mux}
-	go srv.Serve(l)
+	wg.Go(serve(srv, l, logger))
 
 	term := make(chan os.Signal)
 	signal.Notify(term, os.Interrupt, syscall.SIGTERM)
@@ -250,6 +289,10 @@ func Main() int {
 	case <-term:
 		logger.Log("msg", "Received SIGTERM, exiting gracefully...")
 	case <-ctx.Done():
+	}
+
+	if err := srv.Shutdown(ctx); err != nil {
+		logger.Log("msg", "Server shutdown error", "err", err)
 	}
 
 	cancel()
