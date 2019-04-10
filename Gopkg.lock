@@ -69,6 +69,14 @@
   version = "v3.5.1"
 
 [[projects]]
+  digest = "1:f6485831252319cd6ca29fc170adecf1eb81bf1e805f62f44eb48564ce2485fe"
+  name = "github.com/cespare/xxhash"
+  packages = ["."]
+  pruneopts = ""
+  revision = "3b82fb7d186719faeedd0c2864f868c74fbf79a1"
+  version = "v2.0.0"
+
+[[projects]]
   digest = "1:56c130d885a4aacae1dd9c7b71cfe39912c7ebc1ff7d2b46083c8812996dc43b"
   name = "github.com/davecgh/go-spew"
   packages = ["spew"]
@@ -350,6 +358,25 @@
   version = "v1.0.0"
 
 [[projects]]
+  digest = "1:897c63c623dce2d2da94aeeb096c829b63b9feeb7f53f624cadce596e3893e01"
+  name = "github.com/oklog/ulid"
+  packages = ["."]
+  pruneopts = ""
+  revision = "02a8604050d8466dd915307496174adb9be4593a"
+  version = "v1.3.1"
+
+[[projects]]
+  digest = "1:1fc4897d3cc482d070651563c16a51489296cd9150e6d53fb7ff4d59a24334bc"
+  name = "github.com/opentracing/opentracing-go"
+  packages = [
+    ".",
+    "log",
+  ]
+  pruneopts = ""
+  revision = "659c90643e714681897ec2521c60567dd21da733"
+  version = "v1.1.0"
+
+[[projects]]
   branch = "master"
   digest = "1:c24598ffeadd2762552269271b3b1510df2d83ee6696c1e543a0ff653af494bc"
   name = "github.com/petar/GoLLRB"
@@ -388,6 +415,7 @@
   packages = [
     "prometheus",
     "prometheus/internal",
+    "prometheus/promauto",
     "prometheus/promhttp",
   ]
   pruneopts = ""
@@ -425,6 +453,47 @@
   ]
   pruneopts = ""
   revision = "780932d4fbbe0e69b84c34c20f5c8d0981e109ea"
+
+[[projects]]
+  digest = "1:5c0ec98aaa16ad01fe4e263961a8cd0bcb8c9391c24fa81cab6da84b89a7d006"
+  name = "github.com/prometheus/prometheus"
+  packages = [
+    "pkg/gate",
+    "pkg/labels",
+    "pkg/rulefmt",
+    "pkg/textparse",
+    "pkg/timestamp",
+    "pkg/value",
+    "promql",
+    "storage",
+    "storage/tsdb",
+    "template",
+    "util/stats",
+    "util/strutil",
+    "util/testutil",
+  ]
+  pruneopts = ""
+  revision = "4d60eb36dcbed725fcac5b27018574118f12fffb"
+  version = "v2.8.1"
+
+[[projects]]
+  digest = "1:4ae201412922170629db9f034bc2e205e425a36a4b13a2494180f9dd485fb7b2"
+  name = "github.com/prometheus/tsdb"
+  packages = [
+    ".",
+    "chunkenc",
+    "chunks",
+    "encoding",
+    "errors",
+    "fileutil",
+    "goversion",
+    "index",
+    "labels",
+    "wal",
+  ]
+  pruneopts = ""
+  revision = "4b3a5ac5d36e5262d2656c8d149e137c2d1fab12"
+  version = "v0.7.0"
 
 [[projects]]
   branch = "master"
@@ -574,6 +643,7 @@
   digest = "1:be67264067c68b1f601bfc4a6c102b1380ed0743147381de81ed11da88d2e246"
   name = "k8s.io/api"
   packages = [
+    "admission/v1beta1",
     "admissionregistration/v1alpha1",
     "admissionregistration/v1beta1",
     "apps/v1",
@@ -793,10 +863,12 @@
     "github.com/pkg/errors",
     "github.com/prometheus/client_golang/prometheus",
     "github.com/prometheus/client_golang/prometheus/promhttp",
+    "github.com/prometheus/prometheus/pkg/rulefmt",
     "github.com/stretchr/testify/require",
     "golang.org/x/sync/errgroup",
     "gopkg.in/alecthomas/kingpin.v2",
     "gopkg.in/yaml.v2",
+    "k8s.io/api/admission/v1beta1",
     "k8s.io/api/apps/v1beta2",
     "k8s.io/api/core/v1",
     "k8s.io/api/extensions/v1beta1",
