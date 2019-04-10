@@ -26,9 +26,7 @@ import (
 
 func TestWriteAndReadbackTombStones(t *testing.T) {
 	tmpdir, _ := ioutil.TempDir("", "test")
-	defer func() {
-		testutil.Ok(t, os.RemoveAll(tmpdir))
-	}()
+	defer os.RemoveAll(tmpdir)
 
 	ref := uint64(0)
 

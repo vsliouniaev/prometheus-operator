@@ -117,9 +117,7 @@ func TestHead_ReadWAL(t *testing.T) {
 	}
 	dir, err := ioutil.TempDir("", "test_read_wal")
 	testutil.Ok(t, err)
-	defer func() {
-		testutil.Ok(t, os.RemoveAll(dir))
-	}()
+	defer os.RemoveAll(dir)
 
 	w, err := wal.New(nil, nil, dir)
 	testutil.Ok(t, err)
@@ -283,9 +281,7 @@ func TestHeadDeleteSeriesWithoutSamples(t *testing.T) {
 	}
 	dir, err := ioutil.TempDir("", "test_delete_series")
 	testutil.Ok(t, err)
-	defer func() {
-		testutil.Ok(t, os.RemoveAll(dir))
-	}()
+	defer os.RemoveAll(dir)
 
 	w, err := wal.New(nil, nil, dir)
 	testutil.Ok(t, err)
@@ -341,17 +337,13 @@ Outer:
 	for _, c := range cases {
 		dir, err := ioutil.TempDir("", "test_wal_reload")
 		testutil.Ok(t, err)
-		defer func() {
-			testutil.Ok(t, os.RemoveAll(dir))
-		}()
+		defer os.RemoveAll(dir)
 
 		w, err := wal.New(nil, nil, path.Join(dir, "wal"))
 		testutil.Ok(t, err)
-		defer w.Close()
 
 		head, err := NewHead(nil, nil, w, 1000)
 		testutil.Ok(t, err)
-		defer head.Close()
 
 		app := head.Appender()
 		for _, smpl := range smplsAll {
@@ -369,10 +361,8 @@ Outer:
 		// Compare the samples for both heads - before and after the reload.
 		reloadedW, err := wal.New(nil, nil, w.Dir()) // Use a new wal to ensure deleted samples are gone even after a reload.
 		testutil.Ok(t, err)
-		defer reloadedW.Close()
 		reloadedHead, err := NewHead(nil, nil, reloadedW, 1000)
 		testutil.Ok(t, err)
-		defer reloadedHead.Close()
 		testutil.Ok(t, reloadedHead.Init(0))
 		for _, h := range []*Head{head, reloadedHead} {
 			indexr, err := h.Index()
@@ -501,57 +491,6 @@ func TestDeleteUntilCurMax(t *testing.T) {
 	testutil.Ok(t, err)
 	testutil.Equals(t, []tsdbutil.Sample{sample{11, 1}}, ressmpls)
 }
-
-func TestDeletedSamplesAndSeriesStillInWALAfterCheckpoint(t *testing.T) {
-	dir, err := ioutil.TempDir("", "test_delete_wal")
-	testutil.Ok(t, err)
-	defer func() {
-		testutil.Ok(t, os.RemoveAll(dir))
-	}()
-	wlog, err := wal.NewSize(nil, nil, dir, 32768)
-	testutil.Ok(t, err)
-
-	// Enough samples to cause a checkpoint.
-	numSamples := 10000
-	hb, err := NewHead(nil, nil, wlog, int64(numSamples)*10)
-	testutil.Ok(t, err)
-	defer hb.Close()
-	for i := 0; i < numSamples; i++ {
-		app := hb.Appender()
-		_, err := app.Add(labels.Labels{{"a", "b"}}, int64(i), 0)
-		testutil.Ok(t, err)
-		testutil.Ok(t, app.Commit())
-	}
-	testutil.Ok(t, hb.Delete(0, int64(numSamples), labels.NewEqualMatcher("a", "b")))
-	testutil.Ok(t, hb.Truncate(1))
-	testutil.Ok(t, hb.Close())
-
-	// Confirm there's been a checkpoint.
-	cdir, _, err := LastCheckpoint(dir)
-	testutil.Ok(t, err)
-	// Read in checkpoint and WAL.
-	recs := readTestWAL(t, cdir)
-	recs = append(recs, readTestWAL(t, dir)...)
-
-	var series, samples, stones int
-	for _, rec := range recs {
-		switch rec.(type) {
-		case []RefSeries:
-			series++
-		case []RefSample:
-			samples++
-		case []Stone:
-			stones++
-		default:
-			t.Fatalf("unknown record type")
-		}
-	}
-	testutil.Equals(t, 1, series)
-	testutil.Equals(t, 9999, samples)
-	testutil.Equals(t, 1, stones)
-
-}
-
 func TestDelete_e2e(t *testing.T) {
 	numDatapoints := 1000
 	numRanges := 1000
@@ -604,9 +543,7 @@ func TestDelete_e2e(t *testing.T) {
 		seriesMap[labels.New(l...).String()] = []tsdbutil.Sample{}
 	}
 	dir, _ := ioutil.TempDir("", "test")
-	defer func() {
-		testutil.Ok(t, os.RemoveAll(dir))
-	}()
+	defer os.RemoveAll(dir)
 	hb, err := NewHead(nil, nil, nil, 100000)
 	testutil.Ok(t, err)
 	defer hb.Close()
@@ -970,9 +907,7 @@ func TestRemoveSeriesAfterRollbackAndTruncate(t *testing.T) {
 func TestHead_LogRollback(t *testing.T) {
 	dir, err := ioutil.TempDir("", "wal_rollback")
 	testutil.Ok(t, err)
-	defer func() {
-		testutil.Ok(t, os.RemoveAll(dir))
-	}()
+	defer os.RemoveAll(dir)
 
 	w, err := wal.New(nil, nil, dir)
 	testutil.Ok(t, err)
@@ -1039,9 +974,7 @@ func TestWalRepair(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			dir, err := ioutil.TempDir("", "wal_head_repair")
 			testutil.Ok(t, err)
-			defer func() {
-				testutil.Ok(t, os.RemoveAll(dir))
-			}()
+			defer os.RemoveAll(dir)
 
 			w, err := wal.New(nil, nil, dir)
 			testutil.Ok(t, err)

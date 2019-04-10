@@ -477,23 +477,21 @@
   version = "v2.8.1"
 
 [[projects]]
-  digest = "1:4ae201412922170629db9f034bc2e205e425a36a4b13a2494180f9dd485fb7b2"
+  digest = "1:941951412a8e6d22248929e5606478a42e26723a20eb697834d1cd38a8f3bad7"
   name = "github.com/prometheus/tsdb"
   packages = [
     ".",
     "chunkenc",
     "chunks",
     "encoding",
-    "errors",
     "fileutil",
-    "goversion",
     "index",
     "labels",
     "wal",
   ]
   pruneopts = ""
-  revision = "4b3a5ac5d36e5262d2656c8d149e137c2d1fab12"
-  version = "v0.7.0"
+  revision = "8921f18eb3e34d1e2a752ae0df5bbb94dc367cc7"
+  version = "v0.6.1"
 
 [[projects]]
   branch = "master"

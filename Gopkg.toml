@@ -75,3 +75,7 @@
 [[constraint]]
   name = "github.com/improbable-eng/thanos"
   revision = "e756fe11d3259368b4d840dc1391229d7a515a67"
+
+[[override]]
+  name = "github.com/prometheus/tsdb"
+  version = "<v0.7.0"

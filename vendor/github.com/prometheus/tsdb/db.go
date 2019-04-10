@@ -15,6 +15,7 @@
 package tsdb
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -35,9 +36,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/tsdb/chunkenc"
-	tsdb_errors "github.com/prometheus/tsdb/errors"
 	"github.com/prometheus/tsdb/fileutil"
-	_ "github.com/prometheus/tsdb/goversion"
 	"github.com/prometheus/tsdb/labels"
 	"github.com/prometheus/tsdb/wal"
 	"golang.org/x/sync/errgroup"
@@ -55,10 +54,7 @@ var DefaultOptions = &Options{
 
 // Options of the DB storage.
 type Options struct {
-	// Segments (wal files) max size.
-	// WALSegmentSize = 0, segment size is default size.
-	// WALSegmentSize > 0, segment size is WALSegmentSize.
-	// WALSegmentSize < 0, wal is disabled.
+	// Segments (wal files) max size
 	WALSegmentSize int
 
 	// Duration of persisted data to keep.
@@ -96,8 +92,8 @@ type Appender interface {
 	// If the reference is 0 it must not be used for caching.
 	Add(l labels.Labels, t int64, v float64) (uint64, error)
 
-	// AddFast adds a sample pair for the referenced series. It is generally
-	// faster than adding a sample by providing its full label set.
+	// Add adds a sample pair for the referenced series. It is generally faster
+	// than adding a sample by providing its full label set.
 	AddFast(ref uint64, t int64, v float64) error
 
 	// Commit submits the collected samples and purges the batch.
@@ -292,20 +288,14 @@ func Open(dir string, l log.Logger, r prometheus.Registerer, opts *Options) (db 
 	}
 	db.compactCancel = cancel
 
-	var wlog *wal.WAL
 	segmentSize := wal.DefaultSegmentSize
-	// Wal is enabled.
-	if opts.WALSegmentSize >= 0 {
-		// Wal is set to a custom size.
-		if opts.WALSegmentSize > 0 {
-			segmentSize = opts.WALSegmentSize
-		}
-		wlog, err = wal.NewSize(l, r, filepath.Join(dir, "wal"), segmentSize)
-		if err != nil {
-			return nil, err
-		}
+	if opts.WALSegmentSize > 0 {
+		segmentSize = opts.WALSegmentSize
 	}
-
+	wlog, err := wal.NewSize(l, r, filepath.Join(dir, "wal"), segmentSize)
+	if err != nil {
+		return nil, err
+	}
 	db.head, err = NewHead(r, l, wlog, opts.BlockRanges[0])
 	if err != nil {
 		return nil, err
@@ -392,7 +382,7 @@ func (a dbAppender) Commit() error {
 
 	// We could just run this check every few minutes practically. But for benchmarks
 	// and high frequency use cases this is the safer way.
-	if a.db.head.compactable() {
+	if a.db.head.MaxTime()-a.db.head.MinTime() > a.db.head.chunkRange/2*3 {
 		select {
 		case a.db.compactc <- struct{}{}:
 		default:
@@ -419,11 +409,13 @@ func (db *DB) compact() (err error) {
 			return nil
 		default:
 		}
-		if !db.head.compactable() {
+		// The head has a compactable range if 1.5 level 0 ranges are between the oldest
+		// and newest timestamp. The 0.5 acts as a buffer of the appendable window.
+		if db.head.MaxTime()-db.head.MinTime() <= db.opts.BlockRanges[0]/2*3 {
 			break
 		}
 		mint := db.head.MinTime()
-		maxt := rangeForTimestamp(mint, db.head.chunkRange)
+		maxt := rangeForTimestamp(mint, db.opts.BlockRanges[0])
 
 		// Wrap head into a range that bounds all reads to it.
 		head := &rangeHead{
@@ -869,7 +861,7 @@ func (db *DB) Close() error {
 		g.Go(pb.Close)
 	}
 
-	var merr tsdb_errors.MultiError
+	var merr MultiError
 
 	merr.Add(g.Wait())
 
@@ -904,7 +896,7 @@ func (db *DB) Snapshot(dir string, withHead bool) error {
 	if dir == db.dir {
 		return errors.Errorf("cannot snapshot into base directory")
 	}
-	if _, err := ulid.ParseStrict(dir); err == nil {
+	if _, err := ulid.Parse(dir); err == nil {
 		return errors.Errorf("dir must not be a valid ULID")
 	}
 
@@ -1045,7 +1037,7 @@ func isBlockDir(fi os.FileInfo) bool {
 	if !fi.IsDir() {
 		return false
 	}
-	_, err := ulid.ParseStrict(fi.Name())
+	_, err := ulid.Parse(fi.Name())
 	return err == nil
 }
 
@@ -1097,8 +1089,50 @@ func nextSequenceFile(dir string) (string, int, error) {
 	return filepath.Join(dir, fmt.Sprintf("%0.6d", i+1)), int(i + 1), nil
 }
 
+// The MultiError type implements the error interface, and contains the
+// Errors used to construct it.
+type MultiError []error
+
+// Returns a concatenated string of the contained errors
+func (es MultiError) Error() string {
+	var buf bytes.Buffer
+
+	if len(es) > 1 {
+		fmt.Fprintf(&buf, "%d errors: ", len(es))
+	}
+
+	for i, err := range es {
+		if i != 0 {
+			buf.WriteString("; ")
+		}
+		buf.WriteString(err.Error())
+	}
+
+	return buf.String()
+}
+
+// Add adds the error to the error list if it is not nil.
+func (es *MultiError) Add(err error) {
+	if err == nil {
+		return
+	}
+	if merr, ok := err.(MultiError); ok {
+		*es = append(*es, merr...)
+	} else {
+		*es = append(*es, err)
+	}
+}
+
+// Err returns the error list as an error or nil if it is empty.
+func (es MultiError) Err() error {
+	if len(es) == 0 {
+		return nil
+	}
+	return es
+}
+
 func closeAll(cs []io.Closer) error {
-	var merr tsdb_errors.MultiError
+	var merr MultiError
 
 	for _, c := range cs {
 		merr.Add(c.Close())

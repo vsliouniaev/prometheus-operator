@@ -27,20 +27,12 @@ import (
 
 	"github.com/pkg/errors"
 	"github.com/prometheus/tsdb/chunkenc"
-	tsdb_errors "github.com/prometheus/tsdb/errors"
 	"github.com/prometheus/tsdb/fileutil"
 )
 
 const (
 	// MagicChunks is 4 bytes at the head of a series file.
 	MagicChunks = 0x85BD40DD
-	// MagicChunksSize is the size in bytes of MagicChunks.
-	MagicChunksSize = 4
-
-	chunksFormatV1          = 1
-	ChunksFormatVersionSize = 1
-
-	chunkHeaderSize = MagicChunksSize + ChunksFormatVersionSize
 )
 
 // Meta holds information about a chunk of data.
@@ -65,7 +57,7 @@ func (cm *Meta) writeHash(h hash.Hash) error {
 	return nil
 }
 
-// OverlapsClosedInterval Returns true if the chunk overlaps [mint, maxt].
+// Returns true if the chunk overlaps [mint, maxt].
 func (cm *Meta) OverlapsClosedInterval(mint, maxt int64) bool {
 	// The chunk itself is a closed interval [cm.MinTime, cm.MaxTime].
 	return cm.MinTime <= maxt && mint <= cm.MaxTime
@@ -101,6 +93,8 @@ type Writer struct {
 
 const (
 	defaultChunkSegmentSize = 512 * 1024 * 1024
+
+	chunksFormatV1 = 1
 )
 
 // NewWriter returns a new writer against the given directory.
@@ -139,7 +133,7 @@ func (w *Writer) finalizeTail() error {
 	if err := w.wbuf.Flush(); err != nil {
 		return err
 	}
-	if err := tf.Sync(); err != nil {
+	if err := fileutil.Fsync(tf); err != nil {
 		return err
 	}
 	// As the file was pre-allocated, we truncate any superfluous zero bytes.
@@ -176,8 +170,9 @@ func (w *Writer) cut() error {
 	}
 
 	// Write header metadata for new file.
+
 	metab := make([]byte, 8)
-	binary.BigEndian.PutUint32(metab[:MagicChunksSize], MagicChunks)
+	binary.BigEndian.PutUint32(metab[:4], MagicChunks)
 	metab[4] = chunksFormatV1
 
 	if _, err := f.Write(metab); err != nil {
@@ -378,22 +373,25 @@ func newReader(bs []ByteSlice, cs []io.Closer, pool chunkenc.Pool) (*Reader, err
 	var totalSize int64
 
 	for i, b := range cr.bs {
-		if b.Len() < chunkHeaderSize {
-			return nil, errors.Wrapf(errInvalidSize, "invalid chunk header in segment %d", i)
+		if b.Len() < 4 {
+			return nil, errors.Wrapf(errInvalidSize, "validate magic in segment %d", i)
 		}
 		// Verify magic number.
-		if m := binary.BigEndian.Uint32(b.Range(0, MagicChunksSize)); m != MagicChunks {
+		if m := binary.BigEndian.Uint32(b.Range(0, 4)); m != MagicChunks {
 			return nil, errors.Errorf("invalid magic number %x", m)
-		}
-
-		// Verify chunk format version.
-		if v := int(b.Range(MagicChunksSize, MagicChunksSize+ChunksFormatVersionSize)[0]); v != chunksFormatV1 {
-			return nil, errors.Errorf("invalid chunk format version %d", v)
 		}
 		totalSize += int64(b.Len())
 	}
 	cr.size = totalSize
 	return &cr, nil
+}
+
+// NewReader returns a new chunk reader against the given byte slices.
+func NewReader(bs []ByteSlice, pool chunkenc.Pool) (*Reader, error) {
+	if pool == nil {
+		pool = chunkenc.NewPool()
+	}
+	return newReader(bs, nil, pool)
 }
 
 // NewDirReader returns a new Reader against sequentially numbered files in the
@@ -408,28 +406,18 @@ func NewDirReader(dir string, pool chunkenc.Pool) (*Reader, error) {
 	}
 
 	var (
-		bs   []ByteSlice
-		cs   []io.Closer
-		merr tsdb_errors.MultiError
+		bs []ByteSlice
+		cs []io.Closer
 	)
 	for _, fn := range files {
 		f, err := fileutil.OpenMmapFile(fn)
 		if err != nil {
-			merr.Add(errors.Wrap(err, "mmap files"))
-			merr.Add(closeAll(cs))
-			return nil, merr
+			return nil, errors.Wrapf(err, "mmap files")
 		}
 		cs = append(cs, f)
 		bs = append(bs, realByteSlice(f.Bytes()))
 	}
-
-	reader, err := newReader(bs, cs, pool)
-	if err != nil {
-		merr.Add(err)
-		merr.Add(closeAll(cs))
-		return nil, merr
-	}
-	return reader, nil
+	return newReader(bs, cs, pool)
 }
 
 func (s *Reader) Close() error {

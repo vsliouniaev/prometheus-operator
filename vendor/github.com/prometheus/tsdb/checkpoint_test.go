@@ -32,9 +32,7 @@ import (
 func TestLastCheckpoint(t *testing.T) {
 	dir, err := ioutil.TempDir("", "test_checkpoint")
 	testutil.Ok(t, err)
-	defer func() {
-		testutil.Ok(t, os.RemoveAll(dir))
-	}()
+	defer os.RemoveAll(dir)
 
 	_, _, err = LastCheckpoint(dir)
 	testutil.Equals(t, ErrNotFound, err)
@@ -67,9 +65,7 @@ func TestLastCheckpoint(t *testing.T) {
 func TestDeleteCheckpoints(t *testing.T) {
 	dir, err := ioutil.TempDir("", "test_checkpoint")
 	testutil.Ok(t, err)
-	defer func() {
-		testutil.Ok(t, os.RemoveAll(dir))
-	}()
+	defer os.RemoveAll(dir)
 
 	testutil.Ok(t, DeleteCheckpoints(dir, 0))
 
@@ -88,9 +84,7 @@ func TestDeleteCheckpoints(t *testing.T) {
 func TestCheckpoint(t *testing.T) {
 	dir, err := ioutil.TempDir("", "test_checkpoint")
 	testutil.Ok(t, err)
-	defer func() {
-		testutil.Ok(t, os.RemoveAll(dir))
-	}()
+	defer os.RemoveAll(dir)
 
 	var enc RecordEncoder
 	// Create a dummy segment to bump the initial number.
@@ -194,9 +188,7 @@ func TestCheckpointNoTmpFolderAfterError(t *testing.T) {
 	// Create a new wal with an invalid records.
 	dir, err := ioutil.TempDir("", "test_checkpoint")
 	testutil.Ok(t, err)
-	defer func() {
-		testutil.Ok(t, os.RemoveAll(dir))
-	}()
+	defer os.RemoveAll(dir)
 	w, err := wal.NewSize(nil, nil, dir, 64*1024)
 	testutil.Ok(t, err)
 	testutil.Ok(t, w.Log([]byte{99}))

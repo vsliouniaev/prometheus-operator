@@ -437,9 +437,7 @@ func TestDB_Snapshot(t *testing.T) {
 	snap, err := ioutil.TempDir("", "snap")
 	testutil.Ok(t, err)
 
-	defer func() {
-		testutil.Ok(t, os.RemoveAll(snap))
-	}()
+	defer os.RemoveAll(snap)
 	testutil.Ok(t, db.Snapshot(snap, true))
 	testutil.Ok(t, db.Close())
 
@@ -506,9 +504,7 @@ Outer:
 		snap, err := ioutil.TempDir("", "snap")
 		testutil.Ok(t, err)
 
-		defer func() {
-			testutil.Ok(t, os.RemoveAll(snap))
-		}()
+		defer os.RemoveAll(snap)
 		testutil.Ok(t, db.Snapshot(snap, true))
 		testutil.Ok(t, db.Close())
 
@@ -746,53 +742,29 @@ func TestWALFlushedOnDBClose(t *testing.T) {
 	testutil.Equals(t, []string{"labelvalue"}, values)
 }
 
-func TestWALSegmentSizeOptions(t *testing.T) {
-	tests := map[int]func(dbdir string, segmentSize int){
-		// Default Wal Size.
-		0: func(dbDir string, segmentSize int) {
-			files, err := ioutil.ReadDir(filepath.Join(dbDir, "wal"))
-			testutil.Ok(t, err)
-			for _, f := range files[:len(files)-1] {
-				testutil.Equals(t, int64(DefaultOptions.WALSegmentSize), f.Size(), "WAL file size doesn't match WALSegmentSize option, filename: %v", f.Name())
-			}
-			lastFile := files[len(files)-1]
-			testutil.Assert(t, int64(DefaultOptions.WALSegmentSize) > lastFile.Size(), "last WAL file size is not smaller than the WALSegmentSize option, filename: %v", lastFile.Name())
-		},
-		// Custom Wal Size.
-		2 * 32 * 1024: func(dbDir string, segmentSize int) {
-			files, err := ioutil.ReadDir(filepath.Join(dbDir, "wal"))
-			testutil.Assert(t, len(files) > 1, "current WALSegmentSize should result in more than a single WAL file.")
-			testutil.Ok(t, err)
-			for _, f := range files[:len(files)-1] {
-				testutil.Equals(t, int64(segmentSize), f.Size(), "WAL file size doesn't match WALSegmentSize option, filename: %v", f.Name())
-			}
-			lastFile := files[len(files)-1]
-			testutil.Assert(t, int64(segmentSize) > lastFile.Size(), "last WAL file size is not smaller than the WALSegmentSize option, filename: %v", lastFile.Name())
-		},
-		// Wal disabled.
-		-1: func(dbDir string, segmentSize int) {
-			if _, err := os.Stat(filepath.Join(dbDir, "wal")); !os.IsNotExist(err) {
-				t.Fatal("wal directory is present when the wal is disabled")
-			}
-		},
+func TestWALSegmentSizeOption(t *testing.T) {
+	options := *DefaultOptions
+	options.WALSegmentSize = 2 * 32 * 1024
+	db, delete := openTestDB(t, &options)
+	defer delete()
+	app := db.Appender()
+	for i := int64(0); i < 155; i++ {
+		_, err := app.Add(labels.Labels{labels.Label{Name: "wal", Value: "size"}}, i, rand.Float64())
+		testutil.Ok(t, err)
+		testutil.Ok(t, app.Commit())
 	}
-	for segmentSize, testFunc := range tests {
-		t.Run(fmt.Sprintf("WALSegmentSize %d test", segmentSize), func(t *testing.T) {
-			options := *DefaultOptions
-			options.WALSegmentSize = segmentSize
-			db, delete := openTestDB(t, &options)
-			defer delete()
-			app := db.Appender()
-			for i := int64(0); i < 155; i++ {
-				_, err := app.Add(labels.Labels{labels.Label{Name: "wal", Value: "size"}}, i, rand.Float64())
-				testutil.Ok(t, err)
-				testutil.Ok(t, app.Commit())
-			}
 
-			dbDir := db.Dir()
-			db.Close()
-			testFunc(dbDir, options.WALSegmentSize)
-		})
+	dbDir := db.Dir()
+	db.Close()
+	files, err := ioutil.ReadDir(filepath.Join(dbDir, "wal"))
+	testutil.Assert(t, len(files) > 1, "current WALSegmentSize should result in more than a single WAL file.")
+	testutil.Ok(t, err)
+	for i, f := range files {
+		if len(files)-1 != i {
+			testutil.Equals(t, int64(options.WALSegmentSize), f.Size(), "WAL file size doesn't match WALSegmentSize option, filename: %v", f.Name())
+			continue
+		}
+		testutil.Assert(t, int64(options.WALSegmentSize) > f.Size(), "last WAL file size is not smaller than the WALSegmentSize option, filename: %v", f.Name())
 	}
 }
 
@@ -828,9 +800,7 @@ func TestTombstoneClean(t *testing.T) {
 		snap, err := ioutil.TempDir("", "snap")
 		testutil.Ok(t, err)
 
-		defer func() {
-			testutil.Ok(t, os.RemoveAll(snap))
-		}()
+		defer os.RemoveAll(snap)
 		testutil.Ok(t, db.Snapshot(snap, true))
 		testutil.Ok(t, db.Close())
 
@@ -1353,13 +1323,10 @@ func TestInitializeHeadTimestamp(t *testing.T) {
 	t.Run("clean", func(t *testing.T) {
 		dir, err := ioutil.TempDir("", "test_head_init")
 		testutil.Ok(t, err)
-		defer func() {
-			testutil.Ok(t, os.RemoveAll(dir))
-		}()
+		defer os.RemoveAll(dir)
 
 		db, err := Open(dir, nil, nil, nil)
 		testutil.Ok(t, err)
-		defer db.Close()
 
 		// Should be set to init values if no WAL or blocks exist so far.
 		testutil.Equals(t, int64(math.MaxInt64), db.head.MinTime())
@@ -1376,9 +1343,7 @@ func TestInitializeHeadTimestamp(t *testing.T) {
 	t.Run("wal-only", func(t *testing.T) {
 		dir, err := ioutil.TempDir("", "test_head_init")
 		testutil.Ok(t, err)
-		defer func() {
-			testutil.Ok(t, os.RemoveAll(dir))
-		}()
+		defer os.RemoveAll(dir)
 
 		testutil.Ok(t, os.MkdirAll(path.Join(dir, "wal"), 0777))
 		w, err := wal.New(nil, nil, path.Join(dir, "wal"))
@@ -1400,7 +1365,6 @@ func TestInitializeHeadTimestamp(t *testing.T) {
 
 		db, err := Open(dir, nil, nil, nil)
 		testutil.Ok(t, err)
-		defer db.Close()
 
 		testutil.Equals(t, int64(5000), db.head.MinTime())
 		testutil.Equals(t, int64(15000), db.head.MaxTime())
@@ -1408,15 +1372,12 @@ func TestInitializeHeadTimestamp(t *testing.T) {
 	t.Run("existing-block", func(t *testing.T) {
 		dir, err := ioutil.TempDir("", "test_head_init")
 		testutil.Ok(t, err)
-		defer func() {
-			testutil.Ok(t, os.RemoveAll(dir))
-		}()
+		defer os.RemoveAll(dir)
 
 		createBlock(t, dir, genSeries(1, 1, 1000, 2000))
 
 		db, err := Open(dir, nil, nil, nil)
 		testutil.Ok(t, err)
-		defer db.Close()
 
 		testutil.Equals(t, int64(2000), db.head.MinTime())
 		testutil.Equals(t, int64(2000), db.head.MaxTime())
@@ -1424,9 +1385,7 @@ func TestInitializeHeadTimestamp(t *testing.T) {
 	t.Run("existing-block-and-wal", func(t *testing.T) {
 		dir, err := ioutil.TempDir("", "test_head_init")
 		testutil.Ok(t, err)
-		defer func() {
-			testutil.Ok(t, os.RemoveAll(dir))
-		}()
+		defer os.RemoveAll(dir)
 
 		createBlock(t, dir, genSeries(1, 1, 1000, 6000))
 
@@ -1452,7 +1411,6 @@ func TestInitializeHeadTimestamp(t *testing.T) {
 
 		db, err := Open(dir, nil, r, nil)
 		testutil.Ok(t, err)
-		defer db.Close()
 
 		testutil.Equals(t, int64(6000), db.head.MinTime())
 		testutil.Equals(t, int64(15000), db.head.MaxTime())
@@ -1524,7 +1482,7 @@ func TestNoEmptyBlocks(t *testing.T) {
 		testutil.Assert(t, len(actBlocks) == 1, "No blocks created when compacting with >0 samples")
 	})
 
-	t.Run(`When no new block is created from head, and there are some blocks on disk
+	t.Run(`When no new block is created from head, and there are some blocks on disk 
 	compaction should not run into infinite loop (was seen during development).`, func(t *testing.T) {
 		oldBlocks := db.Blocks()
 		app := db.Appender()
@@ -1706,10 +1664,8 @@ func TestCorrectNumTombstones(t *testing.T) {
 
 func TestVerticalCompaction(t *testing.T) {
 	cases := []struct {
-		blockSeries          [][]Series
-		expSeries            map[string][]tsdbutil.Sample
-		expBlockNum          int
-		expOverlappingBlocks int
+		blockSeries [][]Series
+		expSeries   map[string][]tsdbutil.Sample
 	}{
 		// Case 0
 		// |--------------|
@@ -1736,8 +1692,6 @@ func TestVerticalCompaction(t *testing.T) {
 				sample{8, 99}, sample{9, 99}, sample{10, 99}, sample{11, 99},
 				sample{12, 99}, sample{13, 99}, sample{14, 99},
 			}},
-			expBlockNum:          1,
-			expOverlappingBlocks: 1,
 		},
 		// Case 1
 		// |-------------------------------|
@@ -1764,8 +1718,6 @@ func TestVerticalCompaction(t *testing.T) {
 				sample{8, 99}, sample{9, 99}, sample{10, 99}, sample{11, 0},
 				sample{13, 0}, sample{17, 0},
 			}},
-			expBlockNum:          1,
-			expOverlappingBlocks: 1,
 		},
 		// Case 2
 		// |-------------------------------|
@@ -1800,8 +1752,6 @@ func TestVerticalCompaction(t *testing.T) {
 				sample{14, 59}, sample{15, 59}, sample{17, 59}, sample{20, 59},
 				sample{21, 59}, sample{22, 59},
 			}},
-			expBlockNum:          1,
-			expOverlappingBlocks: 1,
 		},
 		// Case 3
 		// |-------------------|
@@ -1836,8 +1786,6 @@ func TestVerticalCompaction(t *testing.T) {
 				sample{15, 59}, sample{16, 99}, sample{17, 59}, sample{20, 59},
 				sample{21, 59}, sample{22, 59},
 			}},
-			expBlockNum:          1,
-			expOverlappingBlocks: 1,
 		},
 		// Case 4
 		// |-------------------------------------|
@@ -1874,8 +1822,6 @@ func TestVerticalCompaction(t *testing.T) {
 				sample{13, 99}, sample{15, 99}, sample{16, 99}, sample{17, 99},
 				sample{20, 0}, sample{22, 0},
 			}},
-			expBlockNum:          1,
-			expOverlappingBlocks: 1,
 		},
 		// Case 5: series are merged properly when there are multiple series.
 		// |-------------------------------------|
@@ -1970,53 +1916,6 @@ func TestVerticalCompaction(t *testing.T) {
 					sample{20, 0}, sample{22, 0},
 				},
 			},
-			expBlockNum:          1,
-			expOverlappingBlocks: 1,
-		},
-		// Case 6
-		// |--------------|
-		//        |----------------|
-		//                                         |--------------|
-		//                                                  |----------------|
-		{
-			blockSeries: [][]Series{
-				[]Series{
-					newSeries(map[string]string{"a": "b"}, []tsdbutil.Sample{
-						sample{0, 0}, sample{1, 0}, sample{2, 0}, sample{4, 0},
-						sample{5, 0}, sample{7, 0}, sample{8, 0}, sample{9, 0},
-					}),
-				},
-				[]Series{
-					newSeries(map[string]string{"a": "b"}, []tsdbutil.Sample{
-						sample{3, 99}, sample{5, 99}, sample{6, 99}, sample{7, 99},
-						sample{8, 99}, sample{9, 99}, sample{10, 99}, sample{11, 99},
-						sample{12, 99}, sample{13, 99}, sample{14, 99},
-					}),
-				},
-				[]Series{
-					newSeries(map[string]string{"a": "b"}, []tsdbutil.Sample{
-						sample{20, 0}, sample{21, 0}, sample{22, 0}, sample{24, 0},
-						sample{25, 0}, sample{27, 0}, sample{28, 0}, sample{29, 0},
-					}),
-				},
-				[]Series{
-					newSeries(map[string]string{"a": "b"}, []tsdbutil.Sample{
-						sample{23, 99}, sample{25, 99}, sample{26, 99}, sample{27, 99},
-						sample{28, 99}, sample{29, 99}, sample{30, 99}, sample{31, 99},
-					}),
-				},
-			},
-			expSeries: map[string][]tsdbutil.Sample{`{a="b"}`: {
-				sample{0, 0}, sample{1, 0}, sample{2, 0}, sample{3, 99},
-				sample{4, 0}, sample{5, 99}, sample{6, 99}, sample{7, 99},
-				sample{8, 99}, sample{9, 99}, sample{10, 99}, sample{11, 99},
-				sample{12, 99}, sample{13, 99}, sample{14, 99},
-				sample{20, 0}, sample{21, 0}, sample{22, 0}, sample{23, 99},
-				sample{24, 0}, sample{25, 99}, sample{26, 99}, sample{27, 99},
-				sample{28, 99}, sample{29, 99}, sample{30, 99}, sample{31, 99},
-			}},
-			expBlockNum:          2,
-			expOverlappingBlocks: 2,
 		},
 	}
 
@@ -2054,9 +1953,9 @@ func TestVerticalCompaction(t *testing.T) {
 			testutil.Equals(t, 0, int(prom_testutil.ToFloat64(lc.metrics.overlappingBlocks)), "overlapping blocks count should be still 0 here")
 			err = db.compact()
 			testutil.Ok(t, err)
-			testutil.Equals(t, c.expBlockNum, len(db.Blocks()), "Wrong number of blocks [after compact]")
+			testutil.Equals(t, 1, len(db.Blocks()), "Wrong number of blocks [after compact]")
 
-			testutil.Equals(t, c.expOverlappingBlocks, int(prom_testutil.ToFloat64(lc.metrics.overlappingBlocks)), "overlapping blocks count mismatch")
+			testutil.Equals(t, 1, int(prom_testutil.ToFloat64(lc.metrics.overlappingBlocks)), "overlapping blocks count mismatch")
 
 			// Query test after merging the overlapping blocks.
 			querier, err = db.Querier(0, 100)

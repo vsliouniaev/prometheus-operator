@@ -14,6 +14,7 @@
 package chunkenc
 
 import (
+	"fmt"
 	"sync"
 
 	"github.com/pkg/errors"
@@ -45,6 +46,15 @@ type Chunk interface {
 	Appender() (Appender, error)
 	Iterator() Iterator
 	NumSamples() int
+}
+
+// FromData returns a chunk from a byte slice of chunk data.
+func FromData(e Encoding, d []byte) (Chunk, error) {
+	switch e {
+	case EncXOR:
+		return &XORChunk{b: bstream{count: 0, stream: d}}, nil
+	}
+	return nil, fmt.Errorf("unknown chunk encoding: %d", e)
 }
 
 // Appender adds sample pairs to a chunk.

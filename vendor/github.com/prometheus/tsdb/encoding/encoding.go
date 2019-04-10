@@ -27,7 +27,7 @@ var (
 	ErrInvalidChecksum = errors.New("invalid checksum")
 )
 
-// Encbuf is a helper type to populate a byte slice with various types.
+// enbuf is a helper type to populate a byte slice with various types.
 type Encbuf struct {
 	B []byte
 	C [binary.MaxVarintLen64]byte
@@ -65,14 +65,14 @@ func (e *Encbuf) PutVarint64(x int64) {
 	e.B = append(e.B, e.C[:n]...)
 }
 
-// PutUvarintStr writes a string to the buffer prefixed by its varint length (in bytes!).
+// putVarintStr writes a string to the buffer prefixed by its varint length (in bytes!).
 func (e *Encbuf) PutUvarintStr(s string) {
 	b := *(*[]byte)(unsafe.Pointer(&s))
 	e.PutUvarint(len(b))
 	e.PutString(s)
 }
 
-// PutHash appends a hash over the buffers current contents to the buffer.
+// putHash appends a hash over the buffers current contents to the buffer.
 func (e *Encbuf) PutHash(h hash.Hash) {
 	h.Reset()
 	_, err := h.Write(e.B)
@@ -82,7 +82,7 @@ func (e *Encbuf) PutHash(h hash.Hash) {
 	e.B = h.Sum(e.B)
 }
 
-// Decbuf provides safe methods to extract data from a byte slice. It does all
+// decbuf provides safe methods to extract data from a byte slice. It does all
 // necessary bounds checking and advancing of the byte slice.
 // Several datums can be extracted without checking for errors. However, before using
 // any datum, the err() method must be checked.

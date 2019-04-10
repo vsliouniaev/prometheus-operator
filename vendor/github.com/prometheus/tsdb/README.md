@@ -1,6 +1,5 @@
-# TSDB 
+# TSDB [![Build Status](https://travis-ci.org/prometheus/tsdb.svg?branch=master)](https://travis-ci.org/prometheus/tsdb)
 
-[![Build Status](https://travis-ci.org/prometheus/tsdb.svg?branch=master)](https://travis-ci.org/prometheus/tsdb)
 [![GoDoc](https://godoc.org/github.com/prometheus/tsdb?status.svg)](https://godoc.org/github.com/prometheus/tsdb)
 [![Go Report Card](https://goreportcard.com/badge/github.com/prometheus/tsdb)](https://goreportcard.com/report/github.com/prometheus/tsdb)
 

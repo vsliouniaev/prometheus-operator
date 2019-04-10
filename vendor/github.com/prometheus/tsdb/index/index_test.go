@@ -150,9 +150,7 @@ func (m mockIndex) LabelIndices() ([][]string, error) {
 func TestIndexRW_Create_Open(t *testing.T) {
 	dir, err := ioutil.TempDir("", "test_index_create")
 	testutil.Ok(t, err)
-	defer func() {
-		testutil.Ok(t, os.RemoveAll(dir))
-	}()
+	defer os.RemoveAll(dir)
 
 	fn := filepath.Join(dir, indexFilename)
 
@@ -170,7 +168,6 @@ func TestIndexRW_Create_Open(t *testing.T) {
 	testutil.Ok(t, err)
 	_, err = f.WriteAt([]byte{0, 0}, 0)
 	testutil.Ok(t, err)
-	f.Close()
 
 	_, err = NewFileReader(dir)
 	testutil.NotOk(t, err)
@@ -179,9 +176,7 @@ func TestIndexRW_Create_Open(t *testing.T) {
 func TestIndexRW_Postings(t *testing.T) {
 	dir, err := ioutil.TempDir("", "test_index_postings")
 	testutil.Ok(t, err)
-	defer func() {
-		testutil.Ok(t, os.RemoveAll(dir))
-	}()
+	defer os.RemoveAll(dir)
 
 	fn := filepath.Join(dir, indexFilename)
 
@@ -212,7 +207,7 @@ func TestIndexRW_Postings(t *testing.T) {
 	testutil.Ok(t, iw.AddSeries(3, series[2]))
 	testutil.Ok(t, iw.AddSeries(4, series[3]))
 
-	err = iw.WritePostings("a", "1", newListPostings(1, 2, 3, 4))
+	err = iw.WritePostings("a", "1", newListPostings([]uint64{1, 2, 3, 4}))
 	testutil.Ok(t, err)
 
 	testutil.Ok(t, iw.Close())
@@ -241,9 +236,7 @@ func TestIndexRW_Postings(t *testing.T) {
 func TestPersistence_index_e2e(t *testing.T) {
 	dir, err := ioutil.TempDir("", "test_persistence_e2e")
 	testutil.Ok(t, err)
-	defer func() {
-		testutil.Ok(t, os.RemoveAll(dir))
-	}()
+	defer os.RemoveAll(dir)
 
 	lbls, err := labels.ReadLabels(filepath.Join("..", "testdata", "20kseries.json"), 20000)
 	testutil.Ok(t, err)
@@ -306,6 +299,7 @@ func TestPersistence_index_e2e(t *testing.T) {
 			valset[l.Value] = struct{}{}
 		}
 		postings.Add(uint64(i), s.labels)
+		i++
 	}
 
 	for k, v := range values {
@@ -323,9 +317,9 @@ func TestPersistence_index_e2e(t *testing.T) {
 	for i := range all {
 		all[i] = uint64(i)
 	}
-	err = iw.WritePostings("", "", newListPostings(all...))
+	err = iw.WritePostings("", "", newListPostings(all))
 	testutil.Ok(t, err)
-	mi.WritePostings("", "", newListPostings(all...))
+	mi.WritePostings("", "", newListPostings(all))
 
 	for n, e := range postings.m {
 		for v := range e {
@@ -411,19 +405,4 @@ func TestReaderWithInvalidBuffer(t *testing.T) {
 
 	_, err := NewReader(b)
 	testutil.NotOk(t, err)
-}
-
-// TestNewFileReaderErrorNoOpenFiles ensures that in case of an error no file remains open.
-func TestNewFileReaderErrorNoOpenFiles(t *testing.T) {
-	dir := testutil.NewTemporaryDirectory("block", t)
-
-	idxName := filepath.Join(dir.Path(), "index")
-	err := ioutil.WriteFile(idxName, []byte("corrupted contents"), 0644)
-	testutil.Ok(t, err)
-
-	_, err = NewFileReader(idxName)
-	testutil.NotOk(t, err)
-
-	// dir.Close will fail on Win if idxName fd is not closed on error path.
-	dir.Close()
 }

@@ -30,7 +30,6 @@ import (
 	"time"
 
 	"github.com/go-kit/kit/log"
-	tsdb_errors "github.com/prometheus/tsdb/errors"
 	"github.com/prometheus/tsdb/testutil"
 )
 
@@ -269,43 +268,21 @@ func generateRandomEntries(w *WAL, records chan []byte) error {
 	return w.Log(recs...)
 }
 
-type multiReadCloser struct {
-	reader  io.Reader
-	closers []io.Closer
-}
-
-func (m *multiReadCloser) Read(p []byte) (n int, err error) {
-	return m.reader.Read(p)
-}
-func (m *multiReadCloser) Close() error {
-	var merr tsdb_errors.MultiError
-	for _, closer := range m.closers {
-		merr.Add(closer.Close())
-	}
-	return merr.Err()
-}
-
-func allSegments(dir string) (io.ReadCloser, error) {
+func allSegments(dir string) (io.Reader, error) {
 	seg, err := listSegments(dir)
 	if err != nil {
 		return nil, err
 	}
 
 	var readers []io.Reader
-	var closers []io.Closer
 	for _, r := range seg {
 		f, err := os.Open(filepath.Join(dir, r.name))
 		if err != nil {
 			return nil, err
 		}
 		readers = append(readers, f)
-		closers = append(closers, f)
 	}
-
-	return &multiReadCloser{
-		reader:  io.MultiReader(readers...),
-		closers: closers,
-	}, nil
+	return io.MultiReader(readers...), nil
 }
 
 func TestReaderFuzz(t *testing.T) {
@@ -313,9 +290,7 @@ func TestReaderFuzz(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			dir, err := ioutil.TempDir("", "wal_fuzz_live")
 			testutil.Ok(t, err)
-			defer func() {
-				testutil.Ok(t, os.RemoveAll(dir))
-			}()
+			defer os.RemoveAll(dir)
 
 			w, err := NewSize(nil, nil, dir, 128*pageSize)
 			testutil.Ok(t, err)
@@ -331,7 +306,6 @@ func TestReaderFuzz(t *testing.T) {
 
 			sr, err := allSegments(w.Dir())
 			testutil.Ok(t, err)
-			defer sr.Close()
 
 			reader := fn(sr)
 			for expected := range input {
@@ -347,13 +321,10 @@ func TestReaderFuzz_Live(t *testing.T) {
 	logger := testutil.NewLogger(t)
 	dir, err := ioutil.TempDir("", "wal_fuzz_live")
 	testutil.Ok(t, err)
-	defer func() {
-		testutil.Ok(t, os.RemoveAll(dir))
-	}()
+	defer os.RemoveAll(dir)
 
 	w, err := NewSize(nil, nil, dir, 128*pageSize)
 	testutil.Ok(t, err)
-	defer w.Close()
 
 	// In the background, generate a stream of random records and write them
 	// to the WAL.
@@ -372,7 +343,6 @@ func TestReaderFuzz_Live(t *testing.T) {
 
 	seg, err := OpenReadSegment(SegmentName(dir, m))
 	testutil.Ok(t, err)
-	defer seg.Close()
 
 	r := NewLiveReader(logger, seg)
 	segmentTicker := time.NewTicker(100 * time.Millisecond)
@@ -409,7 +379,6 @@ outer:
 
 			seg, err = OpenReadSegment(SegmentName(dir, seg.i+1))
 			testutil.Ok(t, err)
-			defer seg.Close()
 			r = NewLiveReader(logger, seg)
 
 		case <-readTicker.C:
@@ -430,9 +399,7 @@ func TestLiveReaderCorrupt_ShortFile(t *testing.T) {
 	logger := testutil.NewLogger(t)
 	dir, err := ioutil.TempDir("", "wal_live_corrupt")
 	testutil.Ok(t, err)
-	defer func() {
-		testutil.Ok(t, os.RemoveAll(dir))
-	}()
+	defer os.RemoveAll(dir)
 
 	w, err := NewSize(nil, nil, dir, pageSize)
 	testutil.Ok(t, err)
@@ -462,7 +429,6 @@ func TestLiveReaderCorrupt_ShortFile(t *testing.T) {
 
 	seg, err := OpenReadSegment(SegmentName(dir, m))
 	testutil.Ok(t, err)
-	defer seg.Close()
 
 	r := NewLiveReader(logger, seg)
 	testutil.Assert(t, r.Next() == false, "expected no records")
@@ -474,9 +440,7 @@ func TestLiveReaderCorrupt_RecordTooLongAndShort(t *testing.T) {
 	logger := testutil.NewLogger(t)
 	dir, err := ioutil.TempDir("", "wal_live_corrupt")
 	testutil.Ok(t, err)
-	defer func() {
-		testutil.Ok(t, os.RemoveAll(dir))
-	}()
+	defer os.RemoveAll(dir)
 
 	w, err := NewSize(nil, nil, dir, pageSize*2)
 	testutil.Ok(t, err)
@@ -510,7 +474,6 @@ func TestLiveReaderCorrupt_RecordTooLongAndShort(t *testing.T) {
 
 	seg, err := OpenReadSegment(SegmentName(dir, m))
 	testutil.Ok(t, err)
-	defer seg.Close()
 
 	r := NewLiveReader(logger, seg)
 	testutil.Assert(t, r.Next() == false, "expected no records")
