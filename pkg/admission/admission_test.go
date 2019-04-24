@@ -70,6 +70,16 @@ func TestAdmitBadRule(t *testing.T) {
 	if resp.Response.Allowed {
 		t.Errorf("Expected admission to not be allowed but it was")
 	}
+
+	if resp.Response.Result.Details.Causes[0].Message !=
+		`group "test.rules", rule 0, "Test": could not parse expression: parse error at char 10: could not parse remaining input ")"...` {
+		t.Error("Expected error about inability to parse query")
+	}
+
+	if resp.Response.Result.Details.Causes[1].Message !=
+		`group "test.rules", rule 0, "Test": msg=template: __alert_Test:1: unrecognized character in action: U+201C '“'`{
+		t.Error("Expected error about invalid template")
+	}
 }
 
 func api() *Admission {
@@ -223,18 +233,8 @@ var badRulesNoAnnotations = `
               {
                 "alert": "Test",
                 "annotations": {
-                  "message": "Test rule"
-                },
-                "expr": "vector(1))",
-                "for": "5m",
-                "labels": {
-                  "severity": "critical"
-                }
-              },
-              {
-                "alert": "Test2",
-                "annotations": {
-                  "message": "Test rule"
+                  "message": "Test rule",
+                  "val": "{{ print “%f“ $value }}"
                 },
                 "expr": "vector(1))",
                 "for": "5m",
