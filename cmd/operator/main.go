@@ -94,15 +94,8 @@ func (n namespaces) asSlice() []string {
 
 func serve(srv *http.Server, listener net.Listener, logger log.Logger) func() error {
 	return func() error {
-		var err error
-		if cfg.HostTLSConfig.CertFile != "" && cfg.HostTLSConfig.KeyFile != "" {
-			logger.Log("msg", "Staring secure server on :8080")
-			err = srv.ServeTLS(listener, cfg.HostTLSConfig.CertFile, cfg.HostTLSConfig.KeyFile)
-		} else {
-			logger.Log("msg", "Staring insecure server on :8080")
-			err = srv.Serve(listener)
-		}
-		if err != http.ErrServerClosed {
+		logger.Log("msg", "Staring insecure server on :8080")
+		if err := srv.Serve(listener); err != http.ErrServerClosed {
 			return err
 		}
 		return nil
@@ -133,8 +126,6 @@ func init() {
 	flagset.StringVar(&cfg.TLSConfig.CertFile, "cert-file", "", " - NOT RECOMMENDED FOR PRODUCTION - Path to public TLS certificate file.")
 	flagset.StringVar(&cfg.TLSConfig.KeyFile, "key-file", "", "- NOT RECOMMENDED FOR PRODUCTION - Path to private TLS certificate file.")
 	flagset.StringVar(&cfg.TLSConfig.CAFile, "ca-file", "", "- NOT RECOMMENDED FOR PRODUCTION - Path to TLS CA file.")
-	flagset.StringVar(&cfg.HostTLSConfig.CertFile, "host-cert-file", "", "Path to certificate file to host web endpoint")
-	flagset.StringVar(&cfg.HostTLSConfig.KeyFile, "host-key-file", "", "Path to key file to host web endpoint")
 	flagset.StringVar(&cfg.KubeletObject, "kubelet-service", "", "Service/Endpoints object to write kubelets into in format \"namespace/name\"")
 	flagset.BoolVar(&cfg.TLSInsecure, "tls-insecure", false, "- NOT RECOMMENDED FOR PRODUCTION - Don't verify API server's CA certificate.")
 	// The Prometheus config reloader image is released along with the

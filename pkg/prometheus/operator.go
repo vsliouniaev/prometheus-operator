@@ -136,7 +136,6 @@ type Config struct {
 	KubeletObject                 string
 	TLSInsecure                   bool
 	TLSConfig                     rest.TLSClientConfig
-	HostTLSConfig                 rest.TLSClientConfig
 	ConfigReloaderImage           string
 	ConfigReloaderCPU             string
 	ConfigReloaderMemory          string
