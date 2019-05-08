@@ -124,5 +124,5 @@ func (api *API) prometheusStatus(w http.ResponseWriter, req *http.Request) {
 }
 
 func ok(w http.ResponseWriter, _ *http.Request) {
-	w.WriteHeader(200)
+	w.WriteHeader(http.StatusOK)
 }

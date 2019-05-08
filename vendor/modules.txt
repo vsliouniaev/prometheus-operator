@@ -209,12 +209,12 @@ gopkg.in/yaml.v2
 k8s.io/api/core/v1
 k8s.io/api/admission/v1beta1
 k8s.io/api/apps/v1
-k8s.io/api/apps/v1beta2
+k8s.io/api/admissionregistration/v1beta1
 k8s.io/api/extensions/v1beta1
 k8s.io/api/rbac/v1
 k8s.io/api/authentication/v1
-k8s.io/api/admissionregistration/v1beta1
 k8s.io/api/apps/v1beta1
+k8s.io/api/apps/v1beta2
 k8s.io/api/auditregistration/v1alpha1
 k8s.io/api/authentication/v1beta1
 k8s.io/api/authorization/v1
@@ -304,6 +304,7 @@ k8s.io/client-go/discovery/fake
 k8s.io/client-go/testing
 k8s.io/client-go/kubernetes/typed/core/v1
 k8s.io/client-go/tools/clientcmd
+k8s.io/client-go/util/cert
 k8s.io/client-go/kubernetes/typed/admissionregistration/v1beta1
 k8s.io/client-go/kubernetes/typed/apps/v1
 k8s.io/client-go/kubernetes/typed/apps/v1beta1
@@ -347,16 +348,15 @@ k8s.io/client-go/rest/watch
 k8s.io/client-go/tools/clientcmd/api
 k8s.io/client-go/tools/metrics
 k8s.io/client-go/transport
-k8s.io/client-go/util/cert
 k8s.io/client-go/tools/reference
 k8s.io/client-go/tools/auth
 k8s.io/client-go/tools/clientcmd/api/latest
 k8s.io/client-go/util/homedir
+k8s.io/client-go/util/keyutil
 k8s.io/client-go/pkg/apis/clientauthentication
 k8s.io/client-go/pkg/apis/clientauthentication/v1alpha1
 k8s.io/client-go/pkg/apis/clientauthentication/v1beta1
 k8s.io/client-go/util/connrotation
-k8s.io/client-go/util/keyutil
 k8s.io/client-go/tools/clientcmd/api/v1
 # k8s.io/code-generator v0.0.0-20190311093542-50b561225d70
 k8s.io/code-generator/cmd/client-gen

@@ -59,6 +59,36 @@ func TestMain(m *testing.M) {
 	os.Exit(exitCode)
 }
 
+// Test prometheus operator with enabled admission webhook configurations
+func TestAdmissionHooks(t *testing.T) {
+	ctx := framework.NewTestCtx(t)
+	defer ctx.Cleanup(t)
+
+	ns := ctx.CreateNamespace(t, framework.KubeClient)
+
+	finalizers, err := framework.CreatePrometheusOperatorWithAdmissionHooks(ns, *opImage, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, f := range finalizers {
+		ctx.AddFinalizerFn(f)
+	}
+
+	t.Run("x", testAdmissionHooks)
+}
+
+func testAdmissionHooks(t *testing.T) {
+	testFuncs := map[string]func(t *testing.T){
+		"PromRulesMustBeAnnotated":        testPromRulesMustBeAnnotated,
+		"PromtestInvalidRulesAreRejected": testInvalidRulesAreRejected,
+	}
+
+	for name, f := range testFuncs {
+		t.Run(name, f)
+	}
+}
+
 // TestAllNS tests the Prometheus Operator watching all namespaces in a
 // Kubernetes cluster.
 func TestAllNS(t *testing.T) {
@@ -67,7 +97,7 @@ func TestAllNS(t *testing.T) {
 
 	ns := ctx.CreateNamespace(t, framework.KubeClient)
 
-	err := framework.CreatePrometheusOperator(ns, *opImage, nil)
+	_, err := framework.CreatePrometheusOperator(ns, *opImage, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
