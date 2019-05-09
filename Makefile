@@ -15,14 +15,7 @@ EMBEDMD_BINARY:=$(FIRST_GOPATH)/bin/embedmd
 
 TYPES_V1_TARGET:=pkg/apis/monitoring/v1/types.go
 
-# Unfortunately kube-openapi doesn't seem to be properly tagged yet as the other generator binary.
-# Starting with https://github.com/kubernetes/kube-openapi/commit/07437455b254b00a4deb3b420e790b2215450487
-# type object declarations are added which break prometheus operator.
-#
-# TODO(sur): bump this to a proper release branch once upstream resolved this.
-K8S_OPENAPI_GEN_VERSION:=0317810137be915b9cf888946c6e115c1bfac693
-
-K8S_GEN_VERSION:=release-1.13
+K8S_GEN_VERSION:=release-1.14
 K8S_GEN_BINARIES:=deepcopy-gen informer-gen lister-gen client-gen
 K8S_GEN_ARGS:=--go-header-file $(FIRST_GOPATH)/src/$(GO_PKG)/.header --v=1 --logtostderr
 
@@ -52,12 +45,14 @@ build: operator prometheus-config-reloader k8s-gen
 .PHONY: operator
 operator: $(GOLANG_FILES)
 	GOOS=linux CGO_ENABLED=0 go build \
+	-mod=vendor \
 	-ldflags "-X $(GO_PKG)/pkg/version.Version=$(shell cat VERSION)" \
 	-o $@ cmd/operator/main.go
 
 .PHONY: prometheus-config-reloader
 prometheus-config-reloader:
 	GOOS=linux CGO_ENABLED=0 go build \
+	-mod=vendor \
 	-ldflags "-X $(GO_PKG)/pkg/version.Version=$(shell cat VERSION)" \
 	-o $@ cmd/$@/main.go
 
@@ -132,15 +127,11 @@ hack/prometheus-config-reloader-image: cmd/prometheus-config-reloader/Dockerfile
 ##############
 
 .PHONY: generate
-generate: $(DEEPCOPY_TARGET) $(OPENAPI_TARGET) $(shell find jsonnet/prometheus-operator/*-crd.libsonnet -type f) bundle.yaml kube-prometheus $(shell find Documentation -type f)
+generate: $(DEEPCOPY_TARGET) $(OPENAPI_TARGET) $(shell find jsonnet/prometheus-operator/*-crd.libsonnet -type f) bundle.yaml $(shell find Documentation -type f)
 
 .PHONY: generate-in-docker
 generate-in-docker: hack/jsonnet-docker-image
 	hack/generate-in-docker.sh $(MFLAGS) # MFLAGS are the parent make call's flags
-
-.PHONY: kube-prometheus
-kube-prometheus:
-	cd contrib/kube-prometheus && $(MAKE) $(MFLAGS) generate
 
 example/prometheus-operator-crd/**.crd.yaml: $(OPENAPI_TARGET) $(PO_CRDGEN_BINARY)
 	po-crdgen prometheus > example/prometheus-operator-crd/prometheus.crd.yaml
@@ -181,8 +172,9 @@ Documentation/api.md: $(PO_DOCGEN_BINARY) $(TYPES_V1_TARGET)
 Documentation/compatibility.md: $(PO_DOCGEN_BINARY) pkg/prometheus/statefulset.go
 	$(PO_DOCGEN_BINARY) compatibility > $@
 
-$(TO_BE_EXTENDED_DOCS): $(EMBEDMD_BINARY) $(shell find example) kube-prometheus
-	$(EMBEDMD_BINARY) -w `find Documentation -name "*.md" | grep -v vendor`
+# TODO: Disable after moving kube-prometheus out - need to update docs first
+# $(TO_BE_EXTENDED_DOCS): $(EMBEDMD_BINARY) $(shell find example)
+# 	$(EMBEDMD_BINARY) -w `find Documentation -name "*.md" | grep -v vendor`
 
 
 ##############
@@ -241,37 +233,33 @@ hack/jsonnet-docker-image: scripts/jsonnet/Dockerfile
 #
 # /home/user/go/bin/informer-gen:
 #	go get -u -d k8s.io/code-generator/cmd/informer-gen
-#	cd /home/user/go/src/k8s.io/code-generator; git checkout release-1.13
+#	cd /home/user/go/src/k8s.io/code-generator; git checkout release-1.14
 #	go install k8s.io/code-generator/cmd/informer-gen
 #
 define _K8S_GEN_VAR_TARGET_
 $(shell echo $(1) | tr '[:lower:]' '[:upper:]' | tr '-' '_')_BINARY:=$(FIRST_GOPATH)/bin/$(1)
 
 $(FIRST_GOPATH)/bin/$(1):
-	go get -u -d k8s.io/code-generator/cmd/$(1)
-	cd $(FIRST_GOPATH)/src/k8s.io/code-generator; git checkout $(K8S_GEN_VERSION)
-	go install k8s.io/code-generator/cmd/$(1)
+	@go install -mod=vendor k8s.io/code-generator/cmd/$(1)
 
 endef
 
 $(OPENAPI_GEN_BINARY):
-	go get -u -d k8s.io/kube-openapi/cmd/openapi-gen
-	cd $(FIRST_GOPATH)/src/k8s.io/kube-openapi; git checkout $(K8S_OPENAPI_GEN_VERSION)
-	go install k8s.io/kube-openapi/cmd/openapi-gen
+	@go install -mod=vendor k8s.io/kube-openapi/cmd/openapi-gen
 
 $(foreach binary,$(K8S_GEN_BINARIES),$(eval $(call _K8S_GEN_VAR_TARGET_,$(binary))))
 
 $(EMBEDMD_BINARY):
-	@go get github.com/campoy/embedmd
+	@go install -mod=vendor github.com/campoy/embedmd
 
 $(JB_BINARY):
-	go get -u github.com/jsonnet-bundler/jsonnet-bundler/cmd/jb
+	@go install -mod=vendor github.com/jsonnet-bundler/jsonnet-bundler/cmd/jb
 
 $(PO_CRDGEN_BINARY): cmd/po-crdgen/main.go $(OPENAPI_TARGET)
-	go install $(GO_PKG)/cmd/po-crdgen
+	@go install -mod=vendor $(GO_PKG)/cmd/po-crdgen
 
 $(PO_DOCGEN_BINARY): $(shell find cmd/po-docgen -type f) $(TYPES_V1_TARGET)
-	go install $(GO_PKG)/cmd/po-docgen
+	@go install -mod=vendor $(GO_PKG)/cmd/po-docgen
 
 $(GOJSONTOYAML_BINARY):
-	go get -u github.com/brancz/gojsontoyaml
+	@go install -mod=vendor github.com/brancz/gojsontoyaml

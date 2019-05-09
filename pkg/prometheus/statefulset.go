@@ -336,10 +336,14 @@ func makeStatefulSetSpec(p monitoringv1.Prometheus, c *Config, ruleConfigMapName
 			)
 		}
 	case 2:
+		retentionTimeFlag := "-storage.tsdb.retention="
+		if version.Minor >= 7 {
+			retentionTimeFlag = "-storage.tsdb.retention.time="
+		}
 		promArgs = append(promArgs,
 			fmt.Sprintf("-config.file=%s", path.Join(confOutDir, configEnvsubstFilename)),
 			fmt.Sprintf("-storage.tsdb.path=%s", storageDir),
-			"-storage.tsdb.retention="+p.Spec.Retention,
+			retentionTimeFlag+p.Spec.Retention,
 			"-web.enable-lifecycle",
 			"-storage.tsdb.no-lockfile",
 		)
@@ -618,7 +622,7 @@ func makeStatefulSetSpec(p monitoringv1.Prometheus, c *Config, ruleConfigMapName
 
 	finalLabels := c.Labels.Merge(podLabels)
 
-	additionalContainers := p.Spec.Containers
+	var additionalContainers []v1.Container
 
 	if len(ruleConfigMapNames) != 0 {
 		container := v1.Container{
@@ -628,12 +632,14 @@ func makeStatefulSetSpec(p monitoringv1.Prometheus, c *Config, ruleConfigMapName
 				fmt.Sprintf("--webhook-url=%s", localReloadURL),
 			},
 			VolumeMounts: []v1.VolumeMount{},
-			Resources: v1.ResourceRequirements{
-				Limits: v1.ResourceList{
-					v1.ResourceCPU:    resource.MustParse(c.ConfigReloaderCPU),
-					v1.ResourceMemory: resource.MustParse(c.ConfigReloaderMemory),
-				},
-			},
+			Resources:    v1.ResourceRequirements{Limits: v1.ResourceList{}},
+		}
+
+		if c.ConfigReloaderCPU != "0" {
+			container.Resources.Limits[v1.ResourceCPU] = resource.MustParse(c.ConfigReloaderCPU)
+		}
+		if c.ConfigReloaderMemory != "0" {
+			container.Resources.Limits[v1.ResourceMemory] = resource.MustParse(c.ConfigReloaderMemory)
 		}
 
 		for _, name := range ruleConfigMapNames {
@@ -841,6 +847,47 @@ func makeStatefulSetSpec(p monitoringv1.Prometheus, c *Config, ruleConfigMapName
 		prometheusImage = *p.Spec.Image
 	}
 
+	prometheusConfigReloaderResources := v1.ResourceRequirements{Limits: v1.ResourceList{}}
+	if c.ConfigReloaderCPU != "0" {
+		prometheusConfigReloaderResources.Limits[v1.ResourceCPU] = resource.MustParse(c.ConfigReloaderCPU)
+	}
+	if c.ConfigReloaderMemory != "0" {
+		prometheusConfigReloaderResources.Limits[v1.ResourceMemory] = resource.MustParse(c.ConfigReloaderMemory)
+	}
+
+	operatorContainers := append([]v1.Container{
+		{
+			Name:           "prometheus",
+			Image:          prometheusImage,
+			Ports:          ports,
+			Args:           promArgs,
+			VolumeMounts:   promVolumeMounts,
+			LivenessProbe:  livenessProbe,
+			ReadinessProbe: readinessProbe,
+			Resources:      p.Spec.Resources,
+		}, {
+			Name:  "prometheus-config-reloader",
+			Image: c.PrometheusConfigReloaderImage,
+			Env: []v1.EnvVar{
+				{
+					Name: "POD_NAME",
+					ValueFrom: &v1.EnvVarSource{
+						FieldRef: &v1.ObjectFieldSelector{FieldPath: "metadata.name"},
+					},
+				},
+			},
+			Command:      []string{"/bin/prometheus-config-reloader"},
+			Args:         configReloadArgs,
+			VolumeMounts: configReloadVolumeMounts,
+			Resources:    prometheusConfigReloaderResources,
+		},
+	}, additionalContainers...)
+
+	containers, err := k8sutil.MergePatchContainers(operatorContainers, p.Spec.Containers)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to merge containers spec")
+	}
+
 	return &appsv1.StatefulSetSpec{
 		ServiceName:         governingServiceName,
 		Replicas:            p.Spec.Replicas,
@@ -857,38 +904,7 @@ func makeStatefulSetSpec(p monitoringv1.Prometheus, c *Config, ruleConfigMapName
 				Annotations: podAnnotations,
 			},
 			Spec: v1.PodSpec{
-				Containers: append([]v1.Container{
-					{
-						Name:           "prometheus",
-						Image:          prometheusImage,
-						Ports:          ports,
-						Args:           promArgs,
-						VolumeMounts:   promVolumeMounts,
-						LivenessProbe:  livenessProbe,
-						ReadinessProbe: readinessProbe,
-						Resources:      p.Spec.Resources,
-					}, {
-						Name:  "prometheus-config-reloader",
-						Image: c.PrometheusConfigReloaderImage,
-						Env: []v1.EnvVar{
-							{
-								Name: "POD_NAME",
-								ValueFrom: &v1.EnvVarSource{
-									FieldRef: &v1.ObjectFieldSelector{FieldPath: "metadata.name"},
-								},
-							},
-						},
-						Command:      []string{"/bin/prometheus-config-reloader"},
-						Args:         configReloadArgs,
-						VolumeMounts: configReloadVolumeMounts,
-						Resources: v1.ResourceRequirements{
-							Limits: v1.ResourceList{
-								v1.ResourceCPU:    resource.MustParse(c.ConfigReloaderCPU),
-								v1.ResourceMemory: resource.MustParse(c.ConfigReloaderMemory),
-							},
-						},
-					},
-				}, additionalContainers...),
+				Containers:                    containers,
 				SecurityContext:               securityContext,
 				ServiceAccountName:            p.Spec.ServiceAccountName,
 				NodeSelector:                  p.Spec.NodeSelector,
