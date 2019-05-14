@@ -20,7 +20,7 @@ import (
 	"path"
 	"strings"
 
-	appsv1 "k8s.io/api/apps/v1beta2"
+	appsv1 "k8s.io/api/apps/v1"
 	"k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -235,15 +235,28 @@ func makeStatefulSetSpec(a *monitoringv1.Alertmanager, config Config) (*appsv1.S
 		amArgs = append(amArgs, fmt.Sprintf("--log.level=%s", a.Spec.LogLevel))
 	}
 
+	if version.GTE(semver.MustParse("0.16.0")) {
+		if a.Spec.LogFormat != "" && a.Spec.LogFormat != "logfmt" {
+			amArgs = append(amArgs, fmt.Sprintf("--log.format=%s", a.Spec.LogFormat))
+		}
+	}
+
 	localReloadURL := &url.URL{
 		Scheme: "http",
 		Host:   config.LocalHost + ":9093",
 		Path:   path.Clean(webRoutePrefix + "/-/reload"),
 	}
 
-	probeHandler := v1.Handler{
+	livenessProbeHandler := v1.Handler{
 		HTTPGet: &v1.HTTPGetAction{
-			Path: path.Clean(webRoutePrefix + "/api/v1/status"),
+			Path: path.Clean(webRoutePrefix + "/-/healthy"),
+			Port: intstr.FromString("web"),
+		},
+	}
+
+	readinessProbeHandler := v1.Handler{
+		HTTPGet: &v1.HTTPGetAction{
+			Path: path.Clean(webRoutePrefix + "/-/ready"),
 			Port: intstr.FromString("web"),
 		},
 	}
@@ -252,13 +265,13 @@ func makeStatefulSetSpec(a *monitoringv1.Alertmanager, config Config) (*appsv1.S
 	var readinessProbe *v1.Probe
 	if !a.Spec.ListenLocal {
 		livenessProbe = &v1.Probe{
-			Handler:          probeHandler,
+			Handler:          livenessProbeHandler,
 			TimeoutSeconds:   probeTimeoutSeconds,
 			FailureThreshold: 10,
 		}
 
 		readinessProbe = &v1.Probe{
-			Handler:             probeHandler,
+			Handler:             readinessProbeHandler,
 			InitialDelaySeconds: 3,
 			TimeoutSeconds:      3,
 			PeriodSeconds:       5,
