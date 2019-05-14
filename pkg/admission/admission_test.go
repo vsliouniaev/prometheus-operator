@@ -77,7 +77,7 @@ func TestAdmitBadRule(t *testing.T) {
 	}
 
 	if resp.Response.Result.Details.Causes[1].Message !=
-		`group "test.rules", rule 0, "Test": msg=template: __alert_Test:1: unrecognized character in action: U+201C '“'`{
+		`group "test.rules", rule 0, "Test": msg=template: __alert_Test:1: unrecognized character in action: U+201C '“'` {
 		t.Error("Expected error about invalid template")
 	}
 }
